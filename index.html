@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101510">
+  <title>Neon Snake</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #101510; color: #eef7eb; }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; }
+    main { width: min(100%, 520px); text-align: center; }
+    h1 { margin: 0 0 4px; color: #a7f36a; letter-spacing: .12em; text-transform: uppercase; }
+    .subtitle { margin: 0 0 20px; color: #a6b1a2; }
+    .stats { display: flex; justify-content: space-between; margin: 0 0 10px; font-weight: 700; }
+    .board-wrap { position: relative; overflow: hidden; border: 2px solid #39513a; border-radius: 12px; background: #182119; box-shadow: 0 0 32px #8de85b1c; }
+    canvas { display: block; width: 100%; height: auto; touch-action: none; }
+    .overlay { position: absolute; inset: 0; display: grid; place-content: center; gap: 12px; padding: 20px; background: #101510d9; }
+    .overlay[hidden] { display: none; }
+    .overlay h2 { margin: 0; font-size: 1.8rem; }
+    .overlay p { margin: 0; color: #c4d0bf; }
+    button { border: 0; border-radius: 8px; padding: 11px 20px; background: #a7f36a; color: #14200f; font: inherit; font-weight: 800; cursor: pointer; }
+    button:hover { background: #c3ff91; }
+    .help { margin: 14px 0 0; color: #a6b1a2; font-size: .9rem; }
+    .touch-controls { display: grid; grid-template-columns: repeat(3, 54px); grid-template-rows: repeat(2, 48px); gap: 6px; justify-content: center; margin: 16px auto 0; }
+    .touch-controls button { padding: 0; font-size: 1.2rem; background: #273328; color: #eef7eb; border: 1px solid #476148; }
+    .touch-controls button:active { background: #45633e; }
+    .up { grid-column: 2; } .left { grid-column: 1; grid-row: 2; } .down { grid-column: 2; grid-row: 2; } .right { grid-column: 3; grid-row: 2; }
+    @media (min-width: 700px) { .touch-controls { display: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Neon Snake</h1>
+    <p class="subtitle">A tiny arcade game. Eat, grow, and don't bonk!</p>
+    <div class="stats" aria-live="polite"><span>Score: <span id="score">0</span></span><span>Best: <span id="best">0</span></span></div>
+    <div class="board-wrap">
+      <canvas id="game" width="480" height="480" aria-label="Snake game board"></canvas>
+      <section class="overlay" id="overlay">
+        <h2 id="message">Ready?</h2>
+        <p id="hint">Use arrow keys or WASD to move.</p>
+        <button id="start">Start game</button>
+      </section>
+    </div>
+    <p class="help">Arrow keys / WASD to move · Space to pause · Enter to start</p>
+    <div class="touch-controls" aria-label="Touch controls">
+      <button class="up" data-dir="up" aria-label="Up">▲</button>
+      <button class="left" data-dir="left" aria-label="Left">◀</button>
+      <button class="down" data-dir="down" aria-label="Down">▼</button>
+      <button class="right" data-dir="right" aria-label="Right">▶</button>
+    </div>
+  </main>
+  <script>
+    (() => {
+      const canvas = document.querySelector('#game');
+      const ctx = canvas.getContext('2d');
+      const overlay = document.querySelector('#overlay');
+      const message = document.querySelector('#message');
+      const hint = document.querySelector('#hint');
+      const startButton = document.querySelector('#start');
+      const scoreDisplay = document.querySelector('#score');
+      const bestDisplay = document.querySelector('#best');
+      const size = 24;
+      const cells = canvas.width / size;
+      let snake, direction, nextDirection, food, score, timer, state = 'ready';
+      let best = Number(localStorage.getItem('neon-snake-best') || 0);
+      bestDisplay.textContent = best;
+
+      function placeFood() {
+        do { food = { x: Math.floor(Math.random() * cells), y: Math.floor(Math.random() * cells) }; }
+        while (snake.some(part => part.x === food.x && part.y === food.y));
+      }
+      function startGame() {
+        clearInterval(timer);
+        snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
+        direction = { x: 1, y: 0 };
+        nextDirection = { ...direction };
+        score = 0;
+        scoreDisplay.textContent = score;
+        placeFood();
+        state = 'playing';
+        overlay.hidden = true;
+        draw();
+        timer = setInterval(tick, 115);
+      }
+      function endGame(won = false) {
+        clearInterval(timer);
+        state = 'over';
+        message.textContent = won ? 'You win!' : 'Game over';
+        hint.textContent = `Your score: ${score}. Fancy another round?`;
+        startButton.textContent = 'Play again';
+        overlay.hidden = false;
+      }
+      function tick() {
+        direction = nextDirection;
+        const head = { x: snake[0].x + direction.x, y: snake[0].y + direction.y };
+        const eating = head.x === food.x && head.y === food.y;
+        const body = eating ? snake : snake.slice(0, -1);
+        if (head.x < 0 || head.x >= cells || head.y < 0 || head.y >= cells || body.some(part => part.x === head.x && part.y === head.y)) {
+          endGame(); return;
+        }
+        snake.unshift(head);
+        if (eating) {
+          score += 10;
+          scoreDisplay.textContent = score;
+          if (score > best) {
+            best = score;
+            bestDisplay.textContent = best;
+            localStorage.setItem('neon-snake-best', best);
+          }
+          if (snake.length === cells * cells) { endGame(true); return; }
+          placeFood();
+        } else snake.pop();
+        draw();
+      }
+      function draw() {
+        ctx.fillStyle = '#182119';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#263328';
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= cells; i++) {
+          ctx.beginPath(); ctx.moveTo(i * size, 0); ctx.lineTo(i * size, canvas.height); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(0, i * size); ctx.lineTo(canvas.width, i * size); ctx.stroke();
+        }
+        if (!snake) return;
+        ctx.fillStyle = '#ff6b6b';
+        ctx.beginPath();
+        ctx.arc(food.x * size + size / 2, food.y * size + size / 2, size * .34, 0, Math.PI * 2);
+        ctx.fill();
+        snake.forEach((part, i) => {
+          ctx.fillStyle = i === 0 ? '#c3ff91' : '#81d94f';
+          ctx.beginPath();
+          ctx.roundRect(part.x * size + 2, part.y * size + 2, size - 4, size - 4, 6);
+          ctx.fill();
+        });
+      }
+      function turn(dir) {
+        const vectors = { up: { x: 0, y: -1 }, down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 } };
+        const candidate = vectors[dir];
+        if (!candidate || state !== 'playing') return;
+        if (candidate.x + direction.x === 0 && candidate.y + direction.y === 0) return;
+        nextDirection = candidate;
+      }
+      document.addEventListener('keydown', event => {
+        const keys = { ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right' };
+        if (keys[event.key]) { event.preventDefault(); turn(keys[event.key]); }
+        if (event.code === 'Space') {
+          event.preventDefault();
+          if (state === 'playing') { clearInterval(timer); state = 'paused'; message.textContent = 'Paused'; hint.textContent = 'Take a breather.'; startButton.textContent = 'Resume'; overlay.hidden = false; }
+          else if (state === 'paused') { state = 'playing'; overlay.hidden = true; timer = setInterval(tick, 115); }
+        }
+        if (event.key === 'Enter' && state !== 'playing') {
+          if (state === 'paused') { state = 'playing'; overlay.hidden = true; timer = setInterval(tick, 115); }
+          else startGame();
+        }
+      });
+      document.querySelectorAll('[data-dir]').forEach(button => button.addEventListener('click', () => turn(button.dataset.dir)));
+      startButton.addEventListener('click', () => state === 'paused' ? (state = 'playing', overlay.hidden = true, timer = setInterval(tick, 115)) : startGame());
+      draw();
+    })();
+  </script>
+</body>
+</html>
